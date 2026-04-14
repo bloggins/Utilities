@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>UltimateAES Encryptor</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
+    <style>
+        body {
+            font-family: 'Courier New', monospace;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #1a1a1a;
+            color: #00ff00;
+        }
+        .container {
+            background: #000;
+            padding: 30px;
+            border-radius: 10px;
+            border: 1px solid #333;
+        }
+        h1 {
+            color: #00ff00;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .form-group {
+            margin-bottom: 20px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            color: #ccc;
+        }
+        input[type="file"], input[type="text"], select {
+            width: 100%;
+            padding: 10px;
+            background: #222;
+            border: 1px solid #444;
+            color: #00ff00;
+            border-radius: 5px;
+            box-sizing: border-box;
+        }
+        button {
+            background: #00ff00;
+            color: #000;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 16px;
+            width: 100%;
+            margin-top: 10px;
+        }
+        button:hover {
+            background: #00cc00;
+        }
+        .output {
+            margin-top: 30px;
+            padding: 20px;
+            background: #111;
+            border: 1px solid #444;
+            border-radius: 5px;
+            white-space: pre-wrap;
+            font-size: 14px;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .files-section {
+            margin-top: 20px;
+            padding: 15px;
+            background: #0a0a0a;
+            border: 1px solid #333;
+        }
+        .download-link {
+            display: inline-block;
+            background: #ff6600;
+            color: #000;
+            padding: 8px 16px;
+            text-decoration: none;
+            border-radius: 4px;
+            margin: 5px;
+        }
+        .error {
+            color: #ff4444;
+            background: #200000;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 10px 0;
+        }
+        .success {
+            color: #00ff00;
+            background: #002200;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 10px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔒 UltimateAES Encryptor</h1>
+        
+        <div class="form-group">
+            <label for="inputFile">Input binary file:</label>
+            <input type="file" id="inputFile" accept=".bin,*">
+        </div>
+
+        <div class="form-group">
+            <label for="keyInput">Encryption key (string):</label>
+            <input type="text" id="keyInput" placeholder="Enter key or leave empty to generate">
+        </div>
+
+        <div class="form-group">
+            <label>
+                <input type="checkbox" id="generateKey"> Generate random key
+            </label>
+        </div>
+
+        <div class="form-group">
+            <label for="outputFormat">Output format:</label>
+            <select id="outputFormat">
+                <option value="b64">Base64 (b64)</option>
+                <option value="c">C array (c)</option>
+                <option value="vb">Visual Basic (vb)</option>
+                <option value="hex">Hex string (hex)</option>
+                <option value="csharp">C# array (csharp)</option>
+            </select>
+        </div>
+
+        <div class="form-group">
+            <label>
+                <input type="checkbox" id="saveKey"> Save key to key.b64
+            </label>
+        </div>
+
+        <button onclick="encryptFile()">🚀 ENCRYPT FILE</button>
+
+        <div id="status"></div>
+        <div id="output" class="output" style="display: none;"></div>
+        <div id="filesSection" class="files-section" style="display: none;"></div>
+    </div>
+
+    <script>
+        async function encryptFile() {
+            const inputFile = document.getElementById('inputFile').files[0];
+            const keyInput = document.getElementById('keyInput').value;
+            const generateKey = document.getElementById('generateKey').checked;
+            const saveKey = document.getElementById('saveKey').checked;
+            const format = document.getElementById('outputFormat').value;
+
+            if (!inputFile) {
+                showError('Please select an input file');
+                return;
+            }
+
+            showStatus('Processing...');
+
+            try {
+                // Read file
+                const plaintext = await readFile(inputFile);
+                if (plaintext.length === 0) {
+                    throw new Error('Input file is empty');
+                }
+
+                // Get key
+                let rawKey;
+                if (generateKey) {
+                    rawKey = generateRandomString(32);
+                } else if (keyInput) {
+                    rawKey = keyInput;
+                } else {
+                    throw new Error('No key provided. Use "Generate random key" or supply a key.');
+                }
+
+                // Derive AES key (32 bytes SHA256)
+                const aesKey = CryptoJS.SHA256(rawKey).toString(CryptoJS.enc.Latin1);
+
+                // Random IV (16 bytes)
+                const iv = CryptoJS.lib.WordArray.random(16);
+
+                // Pad data
+                const padded = padData(plaintext);
+
+                // Encrypt AES-CBC
+                const ciphertext = CryptoJS.AES.encrypt(
+                    CryptoJS.lib.WordArray.create(padded), 
+                    CryptoJS.enc.Latin1.parse(aesKey), 
+                    { iv: iv, mode: CryptoJS.mode.CBC, padding: CryptoJS.pad.NoPadding }
+                );
+
+                // Final blob: IV + ciphertext
+                const finalBlob = iv.concat(ciphertext.ciphertext);
+
+                // Convert to bytes
+                const finalBytes = wordArrayToUint8Array(finalBlob);
+
+                // Byte count
+                const byteCount = finalBytes.length;
+
+                // Base64 payload
+                const b64 = CryptoJS.enc.Base64.stringify(finalBlob);
+
+                // Save files
+                const payloadBlob = new Blob([b64], { type: 'text/plain' });
+                const payloadUrl = URL.createObjectURL(payloadBlob);
+                
+                let keyUrl = null;
+                if (saveKey || generateKey) {
+                    const keyB64 = btoa(String.fromCharCode(...new Uint8Array(rawKey.split('').map(c => c.charCodeAt(0)))));
+                    const keyBlob = new Blob([keyB64], { type: 'text/plain' });
+                    keyUrl = URL.createObjectURL(keyBlob);
+                }
+
+                // Generate output
+                const output = generateOutput(finalBytes, format, byteCount, b64);
+                
+                showSuccess(`[+] Success! Bytes: ${byteCount} (0x${byteCount.toString(16).toUpperCase()})`);
+                document.getElementById('output').textContent = output;
+                document.getElementById('output').style.display = 'block';
+
+                showFiles(payloadUrl, keyUrl, saveKey || generateKey);
+
+            } catch (error) {
+                showError(error.message);
+            }
+        }
+
+        function readFile(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => resolve(new Uint8Array(reader.result));
+                reader.onerror = () => reject(new Error('Failed to read file'));
+                reader.readAsArrayBuffer(file);
+            });
+        }
+
+        function generateRandomString(length = 32) {
+            const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+            let result = '';
+            for (let i = 0; i < length; i++) {
+                result += chars.charAt(Math.floor(Math.random() * chars.length));
+            }
+            return result;
+        }
+
+        function padData(data) {
+            const blockSize = 16;
+            const paddingLen = blockSize - (data.length % blockSize);
+            const padding = new Uint8Array(paddingLen);
+            padding.fill(paddingLen);
+            return new Uint8Array([...data, ...padding]);
+        }
+
+        function wordArrayToUint8Array(wordArray) {
+            const array = [];
+            for (let i = 0; i < wordArray.sigBytes; i++) {
+                array[i] = (wordArray.words[Math.floor(i / 4)] >>> (24 - (i % 4) * 8)) & 0xff;
+            }
+            return new Uint8Array(array);
+        }
+
+        function generateOutput(data, format, byteCount, b64) {
+            const hexStr = Array.from(data).map(b => b.toString(16).padStart(2, '0')).join('');
+            
+            switch (format) {
+                case 'b64':
+                    return `[+] Base64 output (IV + ciphertext) - bytes: ${byteCount} (0x${byteCount.toString(16).toUpperCase()}):\n\n${b64}`;
+                case 'c':
+                    return `[+] C output (IV + ciphertext) - bytes: ${byteCount} (0x${byteCount.toString(16).toUpperCase()}):\n\n${toCArray(data, 'payload', byteCount)}`;
+                case 'vb':
+                    return `[+] VB output (IV + ciphertext) - bytes: ${byteCount} (0x${byteCount.toString(16).toUpperCase()}):\n\n${toVBArray(data, 'payload', byteCount)}`;
+                case 'hex':
+                    return `[+] Hex output (IV + ciphertext) - bytes: ${byteCount} (0x${byteCount.toString(16).toUpperCase()}):\n\n${hexStr}`;
+                case 'csharp':
+                    return `[+] C# output (IV + ciphertext) - bytes: ${byteCount} (0x${byteCount.toString(16).toUpperCase()}):\n\n${toCSharpArray(data, 'payload', byteCount)}`;
+            }
+        }
+
+        function toCArray(data, varname, byteCount) {
+            const chunk = 16;
+            const parts = [];
+            for (let i = 0; i < data.length; i += chunk) {
+                const chunkData = data.slice(i, i + chunk).map(b => `0x${b.toString(16).padStart(2, '0')}`).join(', ');
+                parts.push(chunkData);
+            }
+            const body = parts.join(',\n    ');
+            return `/* payload bytes: ${byteCount} (0x${byteCount.toString(16).toUpperCase()}) */\nunsigned char ${varname}[] = {\n    ${body}\n};`;
+        }
+
+        function toVBArray(data, varname, byteCount) {
+            const chunk = 16;
+            const hexItems = data.map(b => `&H${b.toString(16).toUpperCase().padStart(2, '0')}`);
+            const lines = [];
+            for (let i = 0; i < hexItems.length; i += chunk) {
+                lines.push(hexItems.slice(i, i + chunk).join(', '));
+            }
+            const body = lines.join(' _\n    ');
+            return `' payload bytes: ${byteCount} (0x${byteCount.toString(16).toUpperCase()})\nDim ${varname} As Byte() = { ${body} }`;
+        }
+
+        function toCSharpArray(data, varname, byteCount) {
+            const chunk = 16;
+            const parts = [];
+            for (let i = 0; i < data.length; i += chunk) {
+                const chunkData = data.slice(i, i + chunk).map(b => `0x${b.toString(16).padStart(2, '0')}`).join(', ');
+                parts.push(chunkData);
+            }
+            const body = parts.join(',\n    ');
+            return `// payload bytes: ${byteCount} (0x${byteCount.toString(16).toUpperCase()})\nbyte[] ${varname} = new byte[] {\n    ${body}\n};`;
+        }
+
+        function showStatus(msg) {
+            document.getElementById('status').innerHTML = `<div class="success">${msg}</div>`;
+        }
+
+        function showError(msg) {
+            document.getElementById('status').innerHTML = `<div class="error">❌ ${msg}</div>`;
+        }
+
+        function showSuccess(msg) {
+            document.getElementById('status').innerHTML = `<div class="success">✅ ${msg}</div>`;
+        }
+
+        function showFiles(payloadUrl, keyUrl, hasKey) {
+            let html = '<strong>📁 Files generated:</strong><br>';
+            html += `<a href="${payloadUrl}" class="download-link" download="payload.b64">💾 Download payload.b64</a><br>`;
+            if (hasKey && keyUrl) {
+                html += `<a href="${keyUrl}" class="download-link" download="key.b64">🔑 Download key.b64</a>`;
+            }
+            document.getElementById('filesSection').innerHTML = html;
+            document.getElementById('filesSection').style.display = 'block';
+        }
+    </script>
+</body>
+</html>
